@@ -98,7 +98,7 @@ jobs:
         working-directory: upstream
         shell: bash
         run: |
-          npm run build:studio
+          # A interface Vite e independente do pacote React studio, cujo Babel tem peer dependency faltante.
           npm run vite:build
           test -s dist/index.html
 
