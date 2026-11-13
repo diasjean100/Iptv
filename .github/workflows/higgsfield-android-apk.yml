@@ -14,6 +14,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
+      - name: Baixar integracao Google do meu repositorio
+        uses: actions/checkout@v4
+        with:
+          path: integracao
+
       - name: Baixar somente o projeto original
         uses: actions/checkout@v4
         with:
@@ -50,7 +55,9 @@ jobs:
           assert "showCheckingScreen();\nhasValidSession().then((sub) => {" in s, 'O gate de login foi alterado pelo upstream.'
           s = s[:s.index('showCheckingScreen();\nhasValidSession().then((sub) => {')] + "localStorage.removeItem('cf_backend');\nbootApp();\n"
           assert "  // Initial Route\n  navigate('library');" in s
-          s = s.replace("  // Initial Route\n  navigate('library');", "  // Initial Route\n  navigate('image');", 1)
+          s = s.replace("  // Initial Route\n  navigate('library');", "  // Initial Route\n  navigate('google');", 1)
+          assert "const PAGES = {" in s
+          s = s.replace("const PAGES = {", "const PAGES = {\n  google: () => import('./components/GoogleStudio.js').then(m => m.GoogleStudio),", 1)
           p.write_text(s)
 
           p = Path('src/components/Header.js')
@@ -61,6 +68,11 @@ jobs:
           s = s.replace("const m = BackendModal();", "const m = AuthModal();", 1)
           assert "rightPart.appendChild(signOutBtn);" in s
           s = s.replace("rightPart.appendChild(signOutBtn);", "// Sem logout Netlify no modo Android", 1)
+          assert "const items = ['Library', 'Image', 'Video', 'Characters'];" in s
+          s = s.replace("const items = ['Library', 'Image', 'Video', 'Characters'];", "const items = ['Library', 'Image', 'Video', 'Characters', 'Google IA'];", 1)
+          assert "'Characters': 'characters'" in s
+          s = s.replace("'Characters': 'characters'", "'Characters': 'characters', 'Google IA': 'google'", 1)
+          s = s.replace("page === 'characters' ? 'Characters' : null", "page === 'characters' ? 'Characters' : page === 'google' ? 'Google IA' : null", 1)
           p.write_text(s)
 
           p = Path('src/components/AuthModal.js')
@@ -69,8 +81,31 @@ jobs:
           assert "    return overlay;" in s
           s = s.replace("    return overlay;", "    modal.querySelector('#backend-login-btn')?.remove();\n    return overlay;", 1)
           p.write_text(s)
-          print('Patches aplicados: sem gate Netlify, chave Kie, aba Imagem')
+          for source, destination in [('googleApi.mjs', 'src/lib/googleApi.js'), ('GoogleStudio.js', 'src/components/GoogleStudio.js')]:
+              src = Path('../integracao/android-patches') / source
+              assert src.is_file(), 'Patch ausente: ' + source
+              Path(destination).write_text(src.read_text())
+          print('Patches aplicados: Google Gemini + Kie.ai')
           PY
+
+      - name: Validar sintaxe e payload Gemini
+        shell: bash
+        run: |
+          node --check integracao/android-patches/googleApi.mjs
+          node --check integracao/android-patches/GoogleStudio.js
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const {buildGooglePayload, extractGoogleOutput, makeSafeGoogleDownloadUrl} = await import('./integracao/android-patches/googleApi.mjs');
+          const image = buildGooglePayload({kind:'image',model:'gemini-nano-banana-2.1',prompt:'Um teste',images:[],ratio:'1:1'});
+          assert.equal(image.response_format.type,'image');
+          assert.equal(image.model,'gemini-nano-banana-2.1');
+          const video = buildGooglePayload({kind:'video',model:'gemini-omni-1.2-flash',prompt:'Vídeo teste',ratio:'9:16'});
+          assert.equal(video.response_format.delivery,'uri');
+          const result=extractGoogleOutput({steps:[{type:'model_output',content:[{type:'image',mime_type:'image/png',data:'aGVsbG8='}]}]},'image');
+          assert.equal(result.base64,'aGVsbG8=');
+          assert.throws(()=>makeSafeGoogleDownloadUrl('https://evil.example/file'));
+          console.log('Testes unitários Gemini passaram');
+          JS
 
       - name: Instalar dependencias do projeto
         working-directory: upstream
@@ -130,14 +165,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p resultado
-          cp upstream/android/app/build/outputs/apk/debug/app-debug.apk resultado/Open-Higgsfield-AI-Android.apk
+          cp upstream/android/app/build/outputs/apk/debug/app-debug.apk resultado/Open-Higgsfield-AI-Google-Gemini.apk
           sha256sum resultado/Open-Higgsfield-AI-Android.apk | tee resultado/SHA256.txt
           ls -lh resultado/
 
       - name: Publicar APK para baixar
         uses: actions/upload-artifact@v4
         with:
-          name: Open-Higgsfield-AI-Android
+          name: Open-Higgsfield-AI-Google-Gemini
           path: resultado/
           if-no-files-found: error
           retention-days: 14
