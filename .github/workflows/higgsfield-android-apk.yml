@@ -33,8 +33,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verificar SDK Android do runner
+        shell: bash
+        run: |
+          test -n "$ANDROID_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version || sdkmanager --version
 
       - name: Verificar arquivos originais e adaptar para Android autonomo
         working-directory: upstream
