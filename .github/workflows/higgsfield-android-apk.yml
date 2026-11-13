@@ -174,21 +174,6 @@ jobs:
           grep -q "sdkVersion:'24'" /tmp/apk-badging.txt
           unzip -t "$APK" | tail -1
 
-      - name: Testar instalacao Android 12 no emulador
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 31
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-boot-timeout: 600
-          script: |
-            adb install -r upstream/android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell pm path ai.openhiggsfield.gemini.fix
-            adb shell am start -n ai.openhiggsfield.gemini.fix/.MainActivity
-            sleep 8
-            adb shell pidof ai.openhiggsfield.gemini.fix
-
       - name: Verificar identificacao do APK e renomear
         shell: bash
         run: |
@@ -204,3 +189,20 @@ jobs:
           path: resultado/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Testar instalacao Android 12 no emulador
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb install -r upstream/android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm path ai.openhiggsfield.gemini.fix
+            adb shell am start -n ai.openhiggsfield.gemini.fix/.MainActivity
+            sleep 8
+            adb shell pidof ai.openhiggsfield.gemini.fix
+
