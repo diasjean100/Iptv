@@ -166,7 +166,7 @@ jobs:
         run: |
           mkdir -p resultado
           cp upstream/android/app/build/outputs/apk/debug/app-debug.apk resultado/Open-Higgsfield-AI-Google-Gemini.apk
-          sha256sum resultado/Open-Higgsfield-AI-Android.apk | tee resultado/SHA256.txt
+          sha256sum resultado/Open-Higgsfield-AI-Google-Gemini.apk | tee resultado/SHA256.txt
           ls -lh resultado/
 
       - name: Publicar APK para baixar
