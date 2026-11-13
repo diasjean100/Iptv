@@ -1,6 +1,7 @@
 // Google Gemini BYOK client for the personal Android build.
 // No key is bundled. The user enters a key locally at runtime.
 export const GOOGLE_IMAGE_MODELS = Object.freeze([
+  { id: 'gemini-nano-banana-2.1', label: 'Nano Banana 2.1 (recomendado)' },
   { id: 'gemini-3.1-flash-image', label: 'Nano Banana 2 (rápido)' },
   { id: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite (econômico)' },
   { id: 'gemini-3-pro-image', label: 'Nano Banana Pro (qualidade)' },
@@ -29,7 +30,7 @@ export function buildGooglePayload({ kind, model, prompt, images = [], ratio = '
     return {
       model,
       input: inputs,
-      response_format: { type: 'video', aspect_ratio: ratio, resolution: '720p', delivery: 'uri' }
+      response_format: { type: 'video', aspect_ratio: ratio, duration: '5s', resolution: '720p', delivery: 'uri' }
     };
   }
   if (!['1:1', '16:9', '9:16', '4:3', '3:4'].includes(ratio)) throw new Error('Formato de imagem inválido.');
@@ -111,4 +112,40 @@ export function makeSafeGoogleDownloadUrl(uri) {
     throw new Error('O Google retornou um endereço de download não permitido.');
   }
   return url.toString();
+}
+
+
+export function mediaDataUrl(result) {
+  if (!result?.base64 || !/^[A-Za-z0-9+/]+=*$/.test(result.base64)) throw new Error('Mídia sem dados válidos.');
+  if (!/^(image\/png|image\/jpeg|image\/webp|video\/mp4)$/.test(result.mimeType)) throw new Error('Formato de mídia inesperado.');
+  return 'data:' + result.mimeType + ';base64,' + result.base64;
+}
+
+export async function downloadGoogleVideo(result, apiKey, requester = fetch, onProgress = () => {}) {
+  if (result.base64) {
+    const bytes = Uint8Array.from(atob(result.base64), c => c.charCodeAt(0));
+    return new Blob([bytes], { type: result.mimeType || 'video/mp4' });
+  }
+  const uri = makeSafeGoogleDownloadUrl(result.uri || '');
+  const u = new URL(uri);
+  const match = /\/files\/([A-Za-z0-9_-]+):download$/.exec(u.pathname);
+  if (!match) throw new Error('Formato de arquivo de vídeo inesperado.');
+  const headers = { 'x-goog-api-key': apiKey, 'Api-Revision': '2026-05-20' };
+  const fileEndpoint = 'https://generativelanguage.googleapis.com/v1beta/files/' + match[1];
+  for (let attempt = 0; attempt < 36; attempt++) {
+    const check = await requester(fileEndpoint, { headers });
+    if (!check.ok) throw new Error('Não foi possível consultar o arquivo de vídeo (' + check.status + ').');
+    const statusObj = await check.json();
+    const state = String(statusObj.state || statusObj.file?.state || '').toUpperCase();
+    if (state === 'FAILED') throw new Error('O arquivo de vídeo falhou no processamento.');
+    if (state === 'ACTIVE') break;
+    if (attempt === 35) throw new Error('O arquivo não ficou pronto a tempo.');
+    onProgress('Preparando arquivo de vídeo (' + (attempt + 1) * 5 + 's)…');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
+  const fetched = await requester(uri, { headers });
+  if (!fetched.ok) throw new Error('O Google não liberou o download (' + fetched.status + ').');
+  const blob = await fetched.blob();
+  if (!blob.size) throw new Error('O vídeo recebido está vazio.');
+  return blob;
 }
