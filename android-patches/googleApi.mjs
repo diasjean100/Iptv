@@ -1,14 +1,13 @@
 // Google Gemini BYOK client for the personal Android build.
 // No key is bundled. The user enters a key locally at runtime.
 export const GOOGLE_IMAGE_MODELS = Object.freeze([
-  { id: 'gemini-nano-banana-2.1', label: 'Nano Banana 2.1 (recomendado)' },
   { id: 'gemini-3.1-flash-image', label: 'Nano Banana 2 (rápido)' },
   { id: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite (econômico)' },
   { id: 'gemini-3-pro-image', label: 'Nano Banana Pro (qualidade)' },
   { id: 'gemini-2.5-flash-image', label: 'Nano Banana (anterior)' }
 ]);
 export const GOOGLE_VIDEO_MODELS = Object.freeze([
-  { id: 'gemini-omni-1.2-flash', label: 'Gemini Omni Flash (vídeo)' }
+  { id: 'gemini-omni-1.1-flash', label: 'Gemini Omni Flash 1.1 (vídeo)' }
 ]);
 export const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 
@@ -30,13 +29,13 @@ export function buildGooglePayload({ kind, model, prompt, images = [], ratio = '
     return {
       model,
       input: inputs,
-      response_format: { type: 'video', aspect_ratio: ratio, duration: '5s', resolution: '720p', delivery: 'uri' }
+      response_format: { type: 'video', aspect_ratio: ratio, resolution: '720p', delivery: 'uri' }
     };
   }
   if (!['1:1', '16:9', '9:16', '4:3', '3:4'].includes(ratio)) throw new Error('Formato de imagem inválido.');
   const response_format = { type: 'image', aspect_ratio: ratio };
   // Legacy Nano Banana has a fixed output size; omit unsupported image_size.
-  if (model !== 'gemini-2.5-flash-image') response_format.image_size = ['1K', '2K', '4K'].includes(size) ? size : '1K';
+  if (model !== 'gemini-2.5-flash-image' && model !== 'gemini-3.1-flash-lite-image') response_format.image_size = ['1K', '2K', '4K'].includes(size) ? size : '1K';
   return { model, input: inputs, response_format };
 }
 
