@@ -1,0 +1,137 @@
+name: Higgsfield Android - APK de teste
+
+on:
+  push:
+    branches:
+      - build/higgsfield-android
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Baixar somente o projeto original
+        uses: actions/checkout@v4
+        with:
+          repository: Autom8AI/Open-Higgsfield-AI
+          ref: main
+          path: upstream
+          persist-credentials: false
+
+      - name: Configurar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Verificar arquivos originais e adaptar para Android autonomo
+        working-directory: upstream
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/main.js')
+          s = p.read_text()
+          assert "showCheckingScreen();\nhasValidSession().then((sub) => {" in s, 'O gate de login foi alterado pelo upstream.'
+          s = s[:s.index('showCheckingScreen();\nhasValidSession().then((sub) => {')] + "localStorage.removeItem('cf_backend');\nbootApp();\n"
+          assert "  // Initial Route\n  navigate('library');" in s
+          s = s.replace("  // Initial Route\n  navigate('library');", "  // Initial Route\n  navigate('image');", 1)
+          p.write_text(s)
+
+          p = Path('src/components/Header.js')
+          s = p.read_text()
+          assert "import { BackendModal } from './BackendModal.js';" in s
+          s = s.replace("import { BackendModal } from './BackendModal.js';", "import { AuthModal } from './AuthModal.js';", 1)
+          assert "const m = BackendModal();" in s
+          s = s.replace("const m = BackendModal();", "const m = AuthModal();", 1)
+          assert "rightPart.appendChild(signOutBtn);" in s
+          s = s.replace("rightPart.appendChild(signOutBtn);", "// Sem logout Netlify no modo Android", 1)
+          p.write_text(s)
+
+          p = Path('src/components/AuthModal.js')
+          s = p.read_text()
+          assert "modal.querySelector('#backend-login-btn').onclick" in s
+          assert "    return overlay;" in s
+          s = s.replace("    return overlay;", "    modal.querySelector('#backend-login-btn')?.remove();\n    return overlay;", 1)
+          p.write_text(s)
+          print('Patches aplicados: sem gate Netlify, chave Kie, aba Imagem')
+          PY
+
+      - name: Instalar dependencias do projeto
+        working-directory: upstream
+        run: npm ci --no-audit --no-fund
+
+      - name: Preparar dependencias Android Capacitor
+        working-directory: upstream
+        run: npm install --no-save --legacy-peer-deps --no-audit --no-fund @capacitor/core@8 @capacitor/cli@8 @capacitor/android@8
+
+      - name: Configurar Capacitor
+        working-directory: upstream
+        shell: bash
+        run: |
+          cat > capacitor.config.json <<'JSON'
+          {
+            "appId": "ai.openhiggsfield.mobile",
+            "appName": "Open Higgsfield AI",
+            "webDir": "dist",
+            "server": { "androidScheme": "https" },
+            "plugins": { "CapacitorHttp": { "enabled": true } }
+          }
+          JSON
+
+      - name: Gerar interface web
+        working-directory: upstream
+        shell: bash
+        run: |
+          npm run build:studio
+          npm run vite:build
+          test -s dist/index.html
+
+      - name: Preparar projeto nativo Android
+        working-directory: upstream
+        shell: bash
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Instalar Android SDK necessario
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Compilar APK Android debug
+        working-directory: upstream/android
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verificar identificacao do APK e renomear
+        shell: bash
+        run: |
+          mkdir -p resultado
+          cp upstream/android/app/build/outputs/apk/debug/app-debug.apk resultado/Open-Higgsfield-AI-Android.apk
+          sha256sum resultado/Open-Higgsfield-AI-Android.apk | tee resultado/SHA256.txt
+          ls -lh resultado/
+
+      - name: Publicar APK para baixar
+        uses: actions/upload-artifact@v4
+        with:
+          name: Open-Higgsfield-AI-Android
+          path: resultado/
+          if-no-files-found: error
+          retention-days: 14
