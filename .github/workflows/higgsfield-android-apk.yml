@@ -96,10 +96,10 @@ jobs:
           node --input-type=module <<'JS'
           import assert from 'node:assert/strict';
           const {buildGooglePayload, extractGoogleOutput, makeSafeGoogleDownloadUrl} = await import('./integracao/android-patches/googleApi.mjs');
-          const image = buildGooglePayload({kind:'image',model:'gemini-nano-banana-2.1',prompt:'Um teste',images:[],ratio:'1:1'});
+          const image = buildGooglePayload({kind:'image',model:'gemini-3.1-flash-image',prompt:'Um teste',images:[],ratio:'1:1'});
           assert.equal(image.response_format.type,'image');
-          assert.equal(image.model,'gemini-nano-banana-2.1');
-          const video = buildGooglePayload({kind:'video',model:'gemini-omni-1.2-flash',prompt:'Vídeo teste',ratio:'9:16'});
+          assert.equal(image.model,'gemini-3.1-flash-image');
+          const video = buildGooglePayload({kind:'video',model:'gemini-omni-1.1-flash',prompt:'Vídeo teste',ratio:'9:16'});
           assert.equal(video.response_format.delivery,'uri');
           const result=extractGoogleOutput({steps:[{type:'model_output',content:[{type:'image',mime_type:'image/png',data:'aGVsbG8='}]}]},'image');
           assert.equal(result.base64,'aGVsbG8=');
@@ -121,8 +121,8 @@ jobs:
         run: |
           cat > capacitor.config.json <<'JSON'
           {
-            "appId": "ai.openhiggsfield.mobile",
-            "appName": "Open Higgsfield AI",
+            "appId": "ai.openhiggsfield.gemini.fix",
+            "appName": "Higgsfield Gemini FIX",
             "webDir": "dist",
             "server": { "androidScheme": "https" },
             "plugins": { "CapacitorHttp": { "enabled": true } }
@@ -161,18 +161,46 @@ jobs:
           ./gradlew --no-daemon --stacktrace assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Validar assinatura e metadados reais
+        shell: bash
+        run: |
+          APK=upstream/android/app/build/outputs/apk/debug/app-debug.apk
+          SIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          test -x "$SIGNER" && test -x "$AAPT"
+          "$SIGNER" verify --verbose --print-certs "$APK"
+          "$AAPT" dump badging "$APK" | tee /tmp/apk-badging.txt
+          grep -q "package: name='ai.openhiggsfield.gemini.fix'" /tmp/apk-badging.txt
+          grep -q "sdkVersion:'24'" /tmp/apk-badging.txt
+          unzip -t "$APK" | tail -1
+
+      - name: Testar instalacao Android 12 no emulador
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb install -r upstream/android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm path ai.openhiggsfield.gemini.fix
+            adb shell am start -n ai.openhiggsfield.gemini.fix/.MainActivity
+            sleep 8
+            adb shell pidof ai.openhiggsfield.gemini.fix
+
       - name: Verificar identificacao do APK e renomear
         shell: bash
         run: |
           mkdir -p resultado
-          cp upstream/android/app/build/outputs/apk/debug/app-debug.apk resultado/Open-Higgsfield-AI-Google-Gemini.apk
-          sha256sum resultado/Open-Higgsfield-AI-Google-Gemini.apk | tee resultado/SHA256.txt
+          cp upstream/android/app/build/outputs/apk/debug/app-debug.apk resultado/Open-Higgsfield-AI-Gemini-Corrigido.apk
+          sha256sum resultado/Open-Higgsfield-AI-Gemini-Corrigido.apk | tee resultado/SHA256.txt
           ls -lh resultado/
 
       - name: Publicar APK para baixar
         uses: actions/upload-artifact@v4
         with:
-          name: Open-Higgsfield-AI-Google-Gemini
+          name: Open-Higgsfield-AI-Gemini-Corrigido
           path: resultado/
           if-no-files-found: error
           retention-days: 14
